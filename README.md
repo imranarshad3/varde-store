@@ -4,7 +4,9 @@ Next.js (App Router) + React + GSAP storefront with a Postgres-backed admin.
 
 ## Pages
 Store: `/` lookbook home · `/shop` · `/product/[slug]` · `/cart` · `/checkout` · `/lookbook` · `/about` · `/journal` · `/account` · `/contact` · `/faq` · `/shipping-returns` · `/size-guide`
-Admin: `/admin` dashboard · products · orders · customers · messages · settings
+Admin: `/admin` dashboard · products · orders (CSV export) · discounts · reviews · customers · messages · settings
+
+Features: discount codes (starter code `WELCOME10`), moderated reviews with star ratings, back-in-stock waitlist, instant search (press `/`), recently viewed.
 
 ## Environment variables (Vercel → Settings → Environment Variables)
 - `DATABASE_URL` (or `POSTGRES_URL`): added automatically when you connect a Neon database. Tables are created and the catalogue is seeded on first request.

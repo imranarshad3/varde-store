@@ -1,7 +1,7 @@
 import "server-only";
 import { db, hasDb } from "./db";
 import { DEFAULT_SETTINGS, SEED_LOOKS, SEED_PRODUCTS, slugify } from "./seed";
-import type { Customer, Look, Message, Order, OrderItem, OrderStatus, Product, Settings } from "./types";
+import { discountAmount, type Customer, type Discount, type Look, type Message, type Order, type OrderItem, type OrderStatus, type Product, type Review, type Settings } from "./types";
 
 /* ---------------- mapping ---------------- */
 type Row = Record<string, unknown>;
@@ -20,6 +20,8 @@ const toProduct = (r: Row): Product => ({
   material: r.material as string,
   care: r.care as string,
   published: r.published as boolean,
+  rating: r.rating != null ? Number(r.rating) : undefined,
+  reviews: r.reviews != null ? Number(r.reviews) : undefined,
 });
 const toOrder = (r: Row): Order => ({
   id: r.id as number,
@@ -31,6 +33,8 @@ const toOrder = (r: Row): Order => ({
   delivery: r.delivery as string,
   items: r.items as OrderItem[],
   subtotal: r.subtotal as number,
+  discount: (r.discount as number) ?? 0,
+  discountCode: (r.discount_code as string) ?? null,
   shipping: r.shipping as number,
   total: r.total as number,
   status: r.status as OrderStatus,
@@ -42,16 +46,23 @@ const toOrder = (r: Row): Order => ({
 export async function getProducts(opts: { all?: boolean } = {}): Promise<Product[]> {
   if (!hasDb) return SEED_PRODUCTS;
   const sql = await db();
-  const rows = opts.all
-    ? await sql`select * from products order by look_id nulls last, id`
-    : await sql`select * from products where published order by look_id nulls last, id`;
+  const rows = await sql`
+    select p.*, r.rating, r.reviews from products p
+    left join (select product_id, round(avg(rating)::numeric, 1) as rating, count(*)::int as reviews
+               from reviews where approved group by product_id) r on r.product_id = p.id
+    where ${opts.all ? sql`true` : sql`p.published`}
+    order by p.look_id nulls last, p.id`;
   return rows.map(toProduct);
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
   if (!hasDb) return SEED_PRODUCTS.find((p) => p.slug === slug) ?? null;
   const sql = await db();
-  const [r] = await sql`select * from products where slug = ${slug} and published`;
+  const [r] = await sql`
+    select p.*, r.rating, r.reviews from products p
+    left join (select product_id, round(avg(rating)::numeric, 1) as rating, count(*)::int as reviews
+               from reviews where approved group by product_id) r on r.product_id = p.id
+    where p.slug = ${slug} and p.published`;
   return r ? toProduct(r) : null;
 }
 
@@ -84,6 +95,7 @@ export type NewOrder = {
   email: string; name: string; phone: string;
   address: Order["address"]; delivery: "standard" | "express";
   lines: { id: number; size: string; qty: number }[];
+  code?: string;
 };
 
 export async function createOrder(input: NewOrder): Promise<Order> {
@@ -102,10 +114,19 @@ export async function createOrder(input: NewOrder): Promise<Order> {
     if (!items.length) throw new Error("Your bag is empty.");
     const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
     const shipping = input.delivery === "express" ? 25 : subtotal >= settings.freeShipping ? 0 : 15;
+    let discount = 0, code: string | null = null;
+    if (input.code) {
+      const [d] = await tx`select * from discounts where upper(code) = upper(${input.code}) for update`;
+      const why = d ? discountProblem(toDiscount(d), subtotal) : "That code doesn't exist.";
+      if (why) throw new Error(why);
+      discount = discountAmount(toDiscount(d), subtotal);
+      code = d.code as string;
+      await tx`update discounts set uses = uses + 1 where code = ${code}`;
+    }
     const [{ n }] = await tx`select coalesce(max(id), 0) + 10500 as n from orders`;
-    const [r] = await tx`insert into orders (number, email, name, phone, address, delivery, items, subtotal, shipping, total, status)
+    const [r] = await tx`insert into orders (number, email, name, phone, address, delivery, items, subtotal, discount, discount_code, shipping, total, status)
       values (${"VD" + n}, ${input.email}, ${input.name}, ${input.phone}, ${tx.json(input.address)}, ${input.delivery},
-              ${tx.json(items)}, ${subtotal}, ${shipping}, ${subtotal + shipping}, 'paid') returning *`;
+              ${tx.json(items)}, ${subtotal}, ${discount}, ${code}, ${shipping}, ${subtotal - discount + shipping}, 'paid') returning *`;
     return toOrder(r);
   });
 }
@@ -271,4 +292,116 @@ export async function dashboard() {
     low: low.map((r) => ({ id: r.id as number, name: r.name as string, img: r.img as string, stock: r.stock as number })),
     recent, unread: unread as number,
   };
+}
+
+/* ---------------- discounts ---------------- */
+const toDiscount = (r: Row): Discount => ({
+  code: r.code as string, kind: r.kind as Discount["kind"], value: r.value as number,
+  minSubtotal: r.min_subtotal as number, maxUses: (r.max_uses as number) ?? null, uses: r.uses as number,
+  expiresAt: r.expires_at ? new Date(r.expires_at as string).toISOString() : null,
+  active: r.active as boolean, createdAt: new Date(r.created_at as string).toISOString(),
+});
+
+/** Returns a reason the code can't be used, or null if it's fine. */
+export function discountProblem(d: Discount, subtotal: number): string | null {
+  if (!d.active) return "That code is no longer active.";
+  if (d.expiresAt && new Date(d.expiresAt) < new Date()) return "That code has expired.";
+  if (d.maxUses != null && d.uses >= d.maxUses) return "That code has been fully redeemed.";
+  if (subtotal < d.minSubtotal) return `That code needs a minimum spend of $${d.minSubtotal}.`;
+  return null;
+}
+
+export async function findDiscount(code: string): Promise<Discount | null> {
+  if (!hasDb) return null;
+  const sql = await db();
+  const [r] = await sql`select * from discounts where upper(code) = upper(${code})`;
+  return r ? toDiscount(r) : null;
+}
+
+export async function listDiscounts(): Promise<Discount[]> {
+  if (!hasDb) return [];
+  const sql = await db();
+  return (await sql`select * from discounts order by active desc, created_at desc`).map(toDiscount);
+}
+
+export async function createDiscount(d: { code: string; kind: Discount["kind"]; value: number; minSubtotal: number; maxUses: number | null; expiresAt: string | null }) {
+  const sql = await db();
+  await sql`insert into discounts (code, kind, value, min_subtotal, max_uses, expires_at)
+    values (${d.code.toUpperCase()}, ${d.kind}, ${d.value}, ${d.minSubtotal}, ${d.maxUses}, ${d.expiresAt})`;
+}
+
+export async function setDiscountActive(code: string, active: boolean) {
+  const sql = await db();
+  await sql`update discounts set active = ${active} where code = ${code}`;
+}
+
+export async function deleteDiscount(code: string) {
+  const sql = await db();
+  await sql`delete from discounts where code = ${code}`;
+}
+
+/* ---------------- reviews ---------------- */
+const toReview = (r: Row): Review => ({
+  id: r.id as number, productId: r.product_id as number, productName: (r.product_name as string) ?? undefined,
+  name: r.name as string, rating: r.rating as number, title: r.title as string, body: r.body as string,
+  approved: r.approved as boolean, createdAt: new Date(r.created_at as string).toISOString(),
+});
+
+export async function getReviews(productId: number): Promise<Review[]> {
+  if (!hasDb) return [];
+  const sql = await db();
+  return (await sql`select * from reviews where product_id = ${productId} and approved order by created_at desc limit 50`).map(toReview);
+}
+
+export async function createReview(r: { productId: number; name: string; email: string; rating: number; title: string; body: string }) {
+  const sql = await db();
+  await sql`insert into reviews (product_id, name, email, rating, title, body)
+    values (${r.productId}, ${r.name}, ${r.email}, ${r.rating}, ${r.title}, ${r.body})`;
+}
+
+export async function listAllReviews(status?: "pending" | "approved"): Promise<(Review & { email: string })[]> {
+  if (!hasDb) return [];
+  const sql = await db();
+  const rows = await sql`select r.*, p.name as product_name from reviews r join products p on p.id = r.product_id
+    where ${status === "pending" ? sql`not r.approved` : status === "approved" ? sql`r.approved` : sql`true`}
+    order by r.approved, r.created_at desc limit 300`;
+  return rows.map((r) => ({ ...toReview(r), email: r.email as string }));
+}
+
+export async function setReviewApproved(id: number, approved: boolean) {
+  const sql = await db();
+  await sql`update reviews set approved = ${approved} where id = ${id}`;
+}
+
+export async function deleteReview(id: number) {
+  const sql = await db();
+  await sql`delete from reviews where id = ${id}`;
+}
+
+export async function pendingReviewCount() {
+  if (!hasDb) return 0;
+  const sql = await db();
+  const [{ n }] = await sql`select count(*)::int as n from reviews where not approved`;
+  return n as number;
+}
+
+/* ---------------- waitlist ---------------- */
+export async function joinWaitlist(productId: number, email: string) {
+  const sql = await db();
+  await sql`insert into waitlist (product_id, email) values (${productId}, ${email.toLowerCase()}) on conflict do nothing`;
+}
+
+export async function waitlistFor(productId: number): Promise<{ email: string; createdAt: string }[]> {
+  if (!hasDb) return [];
+  const sql = await db();
+  return (await sql`select email, created_at from waitlist where product_id = ${productId} order by created_at`).map((r) => ({
+    email: r.email as string, createdAt: new Date(r.created_at as string).toISOString(),
+  }));
+}
+
+export async function waitlistCounts(): Promise<Record<number, number>> {
+  if (!hasDb) return {};
+  const sql = await db();
+  const rows = await sql`select product_id, count(*)::int as n from waitlist group by product_id`;
+  return Object.fromEntries(rows.map((r) => [r.product_id as number, r.n as number]));
 }

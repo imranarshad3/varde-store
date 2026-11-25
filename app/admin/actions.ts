@@ -107,3 +107,45 @@ export async function clearSampleAction() {
   refresh();
   redirect("/admin/settings?cleared=1");
 }
+
+/* ---------- discounts ---------- */
+export async function createDiscountAction(_: FormState, f: FormData): Promise<FormState> {
+  await requireAdmin();
+  const code = str(f, "code", 30).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+  const kind = f.get("kind") === "fixed" ? "fixed" : "percent";
+  const value = Math.round(Number(f.get("value")));
+  const minSubtotal = Math.max(0, Math.round(Number(f.get("minSubtotal")) || 0));
+  const maxUses = str(f, "maxUses") ? Math.max(1, Math.round(Number(f.get("maxUses")))) : null;
+  const expires = str(f, "expiresAt", 20);
+  if (code.length < 3) return { error: "Codes need at least 3 letters or numbers." };
+  if (!(value > 0) || (kind === "percent" && value > 90)) return { error: kind === "percent" ? "Percent must be between 1 and 90." : "Amount must be at least $1." };
+  try {
+    await q.createDiscount({ code, kind, value, minSubtotal, maxUses, expiresAt: expires ? new Date(expires + "T23:59:59").toISOString() : null });
+  } catch {
+    return { error: `A code called ${code} already exists.` };
+  }
+  revalidatePath("/admin/discounts");
+  return { ok: true, message: `${code} is live. Customers can use it at checkout now.` };
+}
+
+export async function toggleDiscountAction(f: FormData) {
+  await requireAdmin();
+  await q.setDiscountActive(String(f.get("code")), f.get("active") === "1");
+  revalidatePath("/admin/discounts");
+}
+
+export async function deleteDiscountAction(f: FormData) {
+  await requireAdmin();
+  await q.deleteDiscount(String(f.get("code")));
+  revalidatePath("/admin/discounts");
+}
+
+/* ---------- reviews ---------- */
+export async function reviewAction(f: FormData) {
+  await requireAdmin();
+  const id = Number(f.get("id"));
+  const op = String(f.get("op"));
+  if (op === "delete") await q.deleteReview(id);
+  else await q.setReviewApproved(id, op === "approve");
+  refresh();
+}

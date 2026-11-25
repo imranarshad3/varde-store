@@ -31,6 +31,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             </div>
           ))}
           <div className="otot"><span>Subtotal</span><span>{money(o.subtotal)}</span></div>
+          {o.discount > 0 && <div className="otot disc"><span>Discount · {o.discountCode}</span><span>−{money(o.discount)}</span></div>}
           <div className="otot"><span>Delivery · {o.delivery}</span><span>{o.shipping ? money(o.shipping) : "Free"}</span></div>
           <div className="otot big"><span>Total</span><span>{money(o.total)}</span></div>
         </section>

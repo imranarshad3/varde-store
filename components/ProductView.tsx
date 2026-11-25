@@ -6,13 +6,17 @@ import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useStore } from "@/lib/store";
-import { CATEGORY_LABEL, SIZES, money, type Look, type Product } from "@/lib/types";
+import { CATEGORY_LABEL, SIZES, money, type Look, type Product, type Review } from "@/lib/types";
 import ProductCard, { flyToBag } from "./ProductCard";
 import Reveal from "./Reveal";
+import Stars from "./Stars";
+import Reviews from "./Reviews";
+import Waitlist from "./Waitlist";
+import RecentlyViewed from "./RecentlyViewed";
 
 gsap.registerPlugin(useGSAP);
 
-export default function ProductView({ p, look, related }: { p: Product; look: Look | null; related: Product[] }) {
+export default function ProductView({ p, look, related, reviews }: { p: Product; look: Look | null; related: Product[]; reviews: Review[] }) {
   const { add, notify, saved, toggleSaved, setBagOpen, settings } = useStore();
   const [size, setSize] = useState<string | null>(null);
   const [shot, setShot] = useState(0);
@@ -91,7 +95,10 @@ export default function ProductView({ p, look, related }: { p: Product; look: Lo
         <div className="pv-info">
           <p className="eyebrow">{CATEGORY_LABEL[p.category]}{look ? ` · ${look.name}` : ""}</p>
           <h1 className="pv-name">{p.name}</h1>
-          <p className="pv-price">{money(p.price)}</p>
+          <div className="pv-pr">
+            <p className="pv-price">{money(p.price)}</p>
+            {p.reviews ? <a href="#reviews" className="pv-rating"><Stars value={p.rating ?? 0} /> <span className="ul">{p.reviews} review{p.reviews > 1 ? "s" : ""}</span></a> : null}
+          </div>
           <div className="pv-color"><i style={{ background: p.color }} />{p.colorName}</div>
 
           <div className="pv-size-h">
@@ -104,8 +111,9 @@ export default function ProductView({ p, look, related }: { p: Product; look: Lo
             ))}
           </div>
           <p className={`pv-stock${p.stock <= 5 ? " low" : ""}`}>
-            {soldOut ? "Sold out. Join the waitlist via our contact page." : p.stock <= 5 ? `Only ${p.stock} left, made in a small run` : "In stock, ships within 1–2 working days"}
+            {soldOut ? "Sold out for now" : p.stock <= 5 ? `Only ${p.stock} left, made in a small run` : "In stock, ships within 1–2 working days"}
           </p>
+          {soldOut && <Waitlist productId={p.id} />}
           <div className="pv-ctas">
             <button className="btn big" onClick={addToBag} disabled={soldOut}>{soldOut ? "Sold out" : size ? `Add to bag · ${money(p.price)}` : "Select a size"}</button>
             <button className={`pv-save${saved.has(p.id) ? " on" : ""}`} aria-pressed={saved.has(p.id)} aria-label="Save"
@@ -126,6 +134,8 @@ export default function ProductView({ p, look, related }: { p: Product; look: Lo
           </div>
         </div>
       </main>
+
+      <Reviews productId={p.id} productName={p.name} reviews={reviews} rating={p.rating} count={p.reviews} />
 
       {look && look.products.length > 1 && (
         <Reveal className="sec ctl">
@@ -148,6 +158,8 @@ export default function ProductView({ p, look, related }: { p: Product; look: Lo
           <div className="four">{related.map((x) => <div key={x.id} data-reveal><ProductCard p={x} /></div>)}</div>
         </Reveal>
       )}
+
+      <RecentlyViewed currentId={p.id} />
     </>
   );
 }

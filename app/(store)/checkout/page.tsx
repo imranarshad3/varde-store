@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { useStore } from "@/lib/store";
-import { placeOrder } from "@/lib/actions";
+import { checkCode, placeOrder, type CodeResult } from "@/lib/actions";
 import { money } from "@/lib/types";
 
 export default function CheckoutPage() {
@@ -12,7 +12,13 @@ export default function CheckoutPage() {
   const [delivery, setDelivery] = useState<"standard" | "express">("standard");
   const [state, action, pending] = useActionState(placeOrder, null);
 
+  const [codeInput, setCodeInput] = useState("");
+  const [code, setCode] = useState<CodeResult | null>(null);
+  const [checking, startCheck] = useTransition();
   const shipping = delivery === "express" ? 25 : subtotal >= settings.freeShipping ? 0 : 15;
+  const discount = code?.ok ? Math.min(code.discount, subtotal) : 0;
+  const total = subtotal - discount + shipping;
+  const apply = () => startCheck(async () => setCode(await checkCode(codeInput, subtotal)));
 
   if (hydrated && !lines.length)
     return (
@@ -30,6 +36,7 @@ export default function CheckoutPage() {
       </header>
       <form action={action} className="co-grid">
         <input type="hidden" name="lines" value={JSON.stringify(lines.map((l) => ({ id: l.id, size: l.size, qty: l.qty })))} />
+        <input type="hidden" name="code" value={code?.ok ? code.code : ""} />
         <div className="co-form">
           <fieldset>
             <legend><span>1</span>Contact</legend>
@@ -84,9 +91,26 @@ export default function CheckoutPage() {
               <span>{money(l.p.price * l.qty)}</span>
             </div>
           ))}
+          <div className="code-box">
+            {code?.ok ? (
+              <div className="code-on">
+                <span><b>{code.code}</b> · {code.label}</span>
+                <button type="button" className="ul" onClick={() => { setCode(null); setCodeInput(""); }}>Remove</button>
+              </div>
+            ) : (
+              <div className="code-row">
+                <label htmlFor="promo" className="sr">Discount code</label>
+                <input id="promo" value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} placeholder="Discount code"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); apply(); } }} autoComplete="off" />
+                <button type="button" onClick={apply} disabled={checking || !codeInput.trim()}>{checking ? "…" : "Apply"}</button>
+              </div>
+            )}
+            {code && !code.ok && <p className="code-err" role="alert">{code.error}</p>}
+          </div>
           <div className="sum-row"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          {discount > 0 && <div className="sum-row disc"><span>Discount</span><span>−{money(discount)}</span></div>}
           <div className="sum-row"><span>Delivery</span><span>{shipping ? money(shipping) : "Complimentary"}</span></div>
-          <div className="sum-row tot"><span>Total</span><span>{money(subtotal + shipping)}</span></div>
+          <div className="sum-row tot"><span>Total</span><span>{money(total)}</span></div>
         </aside>
       </form>
     </main>

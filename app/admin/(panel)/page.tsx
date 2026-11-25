@@ -1,11 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { dashboard, subscriberCount } from "@/lib/queries";
+import { dashboard, pendingReviewCount, subscriberCount } from "@/lib/queries";
 import { money } from "@/lib/types";
 import RevenueChart from "./RevenueChart";
 
 export default async function Dashboard() {
-  const [d, subs] = await Promise.all([dashboard(), subscriberCount()]);
+  const [d, subs, pendingRv] = await Promise.all([dashboard(), subscriberCount(), pendingReviewCount()]);
   const now = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
   if (!d)
@@ -89,6 +89,7 @@ export default async function Dashboard() {
         </section>
       </div>
       {d.unread > 0 && <Link href="/admin/messages" className="adm-note">You have {d.unread} unread message{d.unread > 1 ? "s" : ""} from customers →</Link>}
+      {pendingRv > 0 && <Link href="/admin/reviews" className="adm-note">{pendingRv} review{pendingRv > 1 ? "s are" : " is"} waiting for approval →</Link>}
     </div>
   );
 }

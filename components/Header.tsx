@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useStore } from "@/lib/store";
+import SearchOverlay from "./SearchOverlay";
 
 gsap.registerPlugin(useGSAP);
 
@@ -21,6 +22,7 @@ export default function Header() {
   const ref = useRef<HTMLDivElement>(null);
   const badge = useRef<HTMLSpanElement>(null);
   const [menu, setMenu] = useState(false);
+  const [search, setSearch] = useState(false);
   const path = usePathname();
   const home = path === "/";
 
@@ -42,6 +44,15 @@ export default function Header() {
     if (menu) gsap.fromTo(".mmenu a", { y: 30, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.06, duration: 0.6, ease: "power3.out" });
   }, { dependencies: [menu], scope: ref });
 
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(t.tagName)) { e.preventDefault(); setSearch(true); }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+
   const items = [...settings.announcements, ...settings.announcements];
 
   return (
@@ -62,9 +73,9 @@ export default function Header() {
         </button>
         <Link href="/" className="logo" aria-label="VARDE home">VARDE</Link>
         <nav className="r">
-          <Link href="/shop" className="hide ic" aria-label="Search the shop">
+          <button className="ic" aria-label="Search" onClick={() => setSearch(true)}>
             <svg width="17" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="m13.5 13.5 5 5" stroke="currentColor" strokeWidth="1.3" /></svg>
-          </Link>
+          </button>
           <Link href="/account" className="hide ic" aria-label="Account">
             <svg width="17" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M2.5 19c.8-4 3.8-6 7.5-6s6.7 2 7.5 6" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
           </Link>
@@ -77,6 +88,7 @@ export default function Header() {
           </button>
         </nav>
       </header>
+      <SearchOverlay open={search} onClose={() => setSearch(false)} />
       {menu && (
         <div className="mmenu" onClick={() => setMenu(false)}>
           {[...NAV, { href: "/about", label: "About" }, { href: "/account", label: "Account" }, { href: "/contact", label: "Contact" }].map((n) => (

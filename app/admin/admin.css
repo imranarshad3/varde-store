@@ -199,3 +199,14 @@
 @media (max-width: 520px) {
   .kpis, .kpis.three { grid-template-columns: 1fr; }
 }
+
+/* discounts, reviews, waitlist */
+.dform { display: flex; flex-direction: column; gap: 16px; }
+.dgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 18px; }
+.dcode { font-size: 13px !important; font-weight: 700; letter-spacing: .06em; background: #f4ece6 !important; color: #7a3a1f; }
+.row-acts { display: flex; gap: 14px; justify-content: flex-end; }
+.otot.disc span:last-child { color: #a4532f; font-weight: 600; }
+.wl-list { list-style: none; padding: 0; margin: 10px 0 16px; display: flex; flex-direction: column; }
+.wl-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0ebe4; font-size: 14px; }
+.adm-root .stars { font-size: 14px; }
+@media (max-width: 860px) { .dgrid { grid-template-columns: 1fr; } }

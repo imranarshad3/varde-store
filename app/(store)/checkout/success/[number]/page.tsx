@@ -28,6 +28,7 @@ export default async function Success({ params, searchParams }: { params: Promis
               <span>{money(i.price * i.qty)}</span>
             </div>
           ))}
+          {order.discount > 0 && <div className="sum-row disc"><span>Discount · {order.discountCode}</span><span>−{money(order.discount)}</span></div>}
           <div className="sum-row"><span>Delivery ({order.delivery})</span><span>{order.shipping ? money(order.shipping) : "Complimentary"}</span></div>
           <div className="sum-row tot"><span>Total</span><span>{money(order.total)}</span></div>
         </div>

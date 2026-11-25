@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getProducts } from "@/lib/queries";
+import { getProducts, waitlistCounts } from "@/lib/queries";
 import { hasDb } from "@/lib/db";
 import { CATEGORY_LABEL, money } from "@/lib/types";
 import { quickStockAction } from "../../actions";
@@ -8,6 +8,7 @@ import { quickStockAction } from "../../actions";
 export default async function Products({ searchParams }: { searchParams: Promise<{ q?: string; c?: string; sort?: string; deleted?: string }> }) {
   const sp = await searchParams;
   let list = await getProducts({ all: true });
+  const wl = await waitlistCounts();
   const q = (sp.q ?? "").toLowerCase();
   if (q) list = list.filter((p) => `${p.name} ${p.colorName} ${p.slug}`.toLowerCase().includes(q));
   if (sp.c) list = list.filter((p) => p.category === sp.c);
@@ -43,7 +44,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 <td>
                   <div className="prod-cell">
                     <span className="tl-img"><Image src={p.img} alt="" fill sizes="44px" /></span>
-                    <div><Link href={`/admin/products/${p.id}`} className="adm-link"><b>{p.name}</b></Link><div className="adm-muted sm"><i className="dot" style={{ background: p.color }} />{p.colorName}</div></div>
+                    <div><Link href={`/admin/products/${p.id}`} className="adm-link"><b>{p.name}</b></Link><div className="adm-muted sm"><i className="dot" style={{ background: p.color }} />{p.colorName}{p.reviews ? ` · ★ ${p.rating} (${p.reviews})` : ""}{wl[p.id] ? <span className="tagsm">{wl[p.id]} waiting</span> : null}</div></div>
                   </div>
                 </td>
                 <td>{CATEGORY_LABEL[p.category]}</td>

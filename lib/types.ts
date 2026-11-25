@@ -15,6 +15,8 @@ export type Product = {
   material: string;
   care: string;
   published: boolean;
+  rating?: number;
+  reviews?: number;
 };
 
 export type Look = {
@@ -36,6 +38,8 @@ export type Order = {
   delivery: string;
   items: OrderItem[];
   subtotal: number;
+  discount: number;
+  discountCode: string | null;
   shipping: number;
   total: number;
   status: OrderStatus;
@@ -65,3 +69,30 @@ export const SIZES = ["XS", "S", "M", "L", "XL"] as const;
 
 export const money = (n: number) =>
   "$" + (Number.isInteger(n) ? n.toString() : n.toFixed(2)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+export type Discount = {
+  code: string;
+  kind: "percent" | "fixed";
+  value: number;
+  minSubtotal: number;
+  maxUses: number | null;
+  uses: number;
+  expiresAt: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type Review = {
+  id: number;
+  productId: number;
+  productName?: string;
+  name: string;
+  rating: number;
+  title: string;
+  body: string;
+  approved: boolean;
+  createdAt: string;
+};
+
+export const discountAmount = (d: Pick<Discount, "kind" | "value">, subtotal: number) =>
+  Math.min(subtotal, d.kind === "percent" ? Math.round((subtotal * d.value) / 100) : d.value);

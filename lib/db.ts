@@ -77,7 +77,28 @@ async function setup(sql: Sql) {
     );
     create table if not exists newsletter (email text primary key, created_at timestamptz not null default now());
     create table if not exists settings (key text primary key, value jsonb not null);
+    create table if not exists discounts (
+      code text primary key, kind text not null default 'percent', value int not null,
+      min_subtotal int not null default 0, max_uses int, uses int not null default 0,
+      expires_at timestamptz, active boolean not null default true, created_at timestamptz not null default now()
+    );
+    create table if not exists reviews (
+      id serial primary key, product_id int not null references products(id) on delete cascade,
+      name text not null, email text not null, rating int not null check (rating between 1 and 5),
+      title text not null default '', body text not null, approved boolean not null default false,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists reviews_product on reviews(product_id) where approved;
+    create table if not exists waitlist (
+      id serial primary key, product_id int not null references products(id) on delete cascade,
+      email text not null, created_at timestamptz not null default now(), unique (product_id, email)
+    );
+    alter table orders add column if not exists discount int not null default 0;
+    alter table orders add column if not exists discount_code text;
   `);
+  // one-time starter code, only on the first run that has the discounts table
+  const first = await sql`insert into settings (key, value) values ('discounts_seeded', 'true') on conflict do nothing returning key`;
+  if (first.length) await sql`insert into discounts (code, kind, value, min_subtotal) values ('WELCOME10', 'percent', 10, 0) on conflict do nothing`;
 
   const [{ n }] = await sql`select count(*)::int as n from looks`;
   if (n > 0) return;

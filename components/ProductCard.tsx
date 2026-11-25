@@ -6,6 +6,7 @@ import Link from "next/link";
 import gsap from "gsap";
 import { useStore } from "@/lib/store";
 import { CATEGORY_LABEL, SIZES, money, type Product } from "@/lib/types";
+import Stars from "./Stars";
 
 /** Fly a copy of the product image into the bag icon. */
 export function flyToBag(from: HTMLElement | null) {
@@ -69,7 +70,7 @@ export default function ProductCard({ p, tag, sizes = "(max-width:600px) 50vw, (
           <h3 className="name">{p.name}</h3>
           <span className="price">{money(p.price)}</span>
         </div>
-        <div className="col"><i style={{ background: p.color }} />{p.colorName}</div>
+        <div className="col"><i style={{ background: p.color }} />{p.colorName}{p.reviews ? <span className="card-rt"><Stars value={p.rating ?? 0} size={11} /> {p.reviews}</span> : null}</div>
       </Link>
     </article>
   );

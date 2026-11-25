@@ -10,7 +10,10 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
 
   return (
     <div className="adm-page">
-      <header className="adm-head"><div><p className="adm-eyebrow">Sales</p><h1>Orders</h1></div></header>
+      <header className="adm-head">
+        <div><p className="adm-eyebrow">Sales</p><h1>Orders</h1></div>
+        <a href={`/admin/export/orders${status ? `?status=${status}` : ""}`} className="a-btn ghost" download>Export {status ?? "all"} as CSV</a>
+      </header>
       <div className="atabs">
         <Link href="/admin/orders" className={!status ? "on" : ""}>All <sup>{all.length}</sup></Link>
         {ORDER_STATUSES.map((s) => <Link key={s} href={`/admin/orders?status=${s}`} className={status === s ? "on" : ""}>{s} <sup>{counts[s]}</sup></Link>)}
@@ -31,7 +34,7 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
                 <td className="nowrap">{new Date(o.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}<div className="adm-muted sm">{new Date(o.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div></td>
                 <td>{o.items.reduce((s, i) => s + i.qty, 0)}</td>
                 <td><span className={`pill ${o.status}`}>{o.status}</span></td>
-                <td className="num"><b>{money(o.total)}</b></td>
+                <td className="num"><b>{money(o.total)}</b>{o.discountCode && <div className="adm-muted sm">{o.discountCode}</div>}</td>
               </tr>
             ))}
             {!orders.length && <tr><td colSpan={6} className="adm-muted center pad">No orders here yet.</td></tr>}

@@ -1,7 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { hasDb } from "./db";
+import { discountAmount } from "./types";
 import * as q from "./queries";
 import { checkPassword, customerLogout, hashPassword, setCustomer } from "./auth";
 
@@ -27,6 +29,7 @@ export async function placeOrder(_: FormState, f: FormData): Promise<FormState> 
       email, name, phone: s(f, "phone", 40), address,
       delivery: f.get("delivery") === "express" ? "express" : "standard",
       lines: lines.slice(0, 30).map((l) => ({ id: Number(l.id), size: String(l.size), qty: Number(l.qty) })),
+      code: s(f, "code", 40) || undefined,
     });
     number = order.number;
   } catch (e) {
@@ -78,4 +81,41 @@ export async function login(_: FormState, f: FormData): Promise<FormState> {
 export async function logout() {
   await customerLogout();
   redirect("/account");
+}
+
+/* ---------- discount codes ---------- */
+export type CodeResult = { ok: true; code: string; discount: number; label: string } | { ok: false; error: string };
+
+export async function checkCode(code: string, subtotal: number): Promise<CodeResult> {
+  const c = code.trim().slice(0, 40);
+  if (!c) return { ok: false, error: "Enter a code." };
+  if (!hasDb) return { ok: false, error: NO_DB };
+  const d = await q.findDiscount(c);
+  if (!d) return { ok: false, error: "That code doesn't exist." };
+  const why = q.discountProblem(d, subtotal);
+  if (why) return { ok: false, error: why };
+  return { ok: true, code: d.code, discount: discountAmount(d, subtotal), label: d.kind === "percent" ? `${d.value}% off` : `$${d.value} off` };
+}
+
+/* ---------- reviews ---------- */
+export async function submitReview(_: FormState, f: FormData): Promise<FormState> {
+  const productId = Number(f.get("productId"));
+  const rating = Math.round(Number(f.get("rating")));
+  const r = { productId, rating, name: s(f, "name", 60), email: s(f, "email"), title: s(f, "title", 100), body: s(f, "body", 2000) };
+  if (!r.name || !isEmail(r.email)) return { error: "Please add your name and a valid email." };
+  if (!(rating >= 1 && rating <= 5)) return { error: "Please choose a star rating." };
+  if (r.body.length < 10) return { error: "Please write a few more words about the piece." };
+  if (!hasDb) return { error: NO_DB };
+  await q.createReview(r);
+  revalidatePath("/admin", "layout");
+  return { ok: true, message: "Thank you. Your review will appear once our team has checked it." };
+}
+
+/* ---------- back-in-stock waitlist ---------- */
+export async function waitlistAction(_: FormState, f: FormData): Promise<FormState> {
+  const email = s(f, "email");
+  if (!isEmail(email)) return { error: "Please enter a valid email." };
+  if (!hasDb) return { error: NO_DB };
+  await q.joinWaitlist(Number(f.get("productId")), email);
+  return { ok: true, message: "You're on the list. We'll email you the moment it's back." };
 }

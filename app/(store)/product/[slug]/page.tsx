@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getLooks, getProductBySlug, getProducts } from "@/lib/queries";
+import { getLooks, getProductBySlug, getProducts, getReviews } from "@/lib/queries";
 import ProductView from "@/components/ProductView";
 
 type P = { params: Promise<{ slug: string }> };
@@ -14,8 +14,8 @@ export default async function ProductPage({ params }: P) {
   const { slug } = await params;
   const p = await getProductBySlug(slug);
   if (!p) notFound();
-  const [looks, all] = await Promise.all([getLooks(), getProducts()]);
+  const [looks, all, reviews] = await Promise.all([getLooks(), getProducts(), getReviews(p.id)]);
   const look = looks.find((l) => l.id === p.lookId) ?? null;
   const related = all.filter((x) => x.category === p.category && x.id !== p.id).slice(0, 4);
-  return <ProductView p={p} look={look} related={related} />;
+  return <ProductView p={p} look={look} related={related} reviews={reviews} />;
 }

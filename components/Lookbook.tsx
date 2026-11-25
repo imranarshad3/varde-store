@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { LOOKS } from "@/lib/data";
+import type { Look } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 gsap.registerPlugin(useGSAP);
@@ -31,9 +31,9 @@ const MOBILE: Record<number, Slot> = {
   5: { l: 100, h: 34, b: 27, o: 0 },
   6: { l: 100, h: 34, b: 27, o: 0 },
 };
-const N = LOOKS.length;
 
-export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: number) => void }) {
+export default function Lookbook({ looks, cur, setCur }: { looks: Look[]; cur: number; setCur: (n: number) => void }) {
+  const N = looks.length;
   const stage = useRef<HTMLElement>(null);
   const figs = useRef<(HTMLDivElement | null)[]>([]);
   const last = useRef<number[]>([]);
@@ -47,7 +47,7 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
       const d = (i - c + N) % N;
       return d === N - 1 ? -1 : d > 6 ? 6 : d;
     },
-    []
+    [N]
   );
 
   useEffect(() => {
@@ -96,9 +96,10 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
   useGSAP(
     () => {
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-      tl.from(".fig img", { y: 60, opacity: 0, duration: 1.2, stagger: { each: 0.08, from: "start" } }, 0.15)
-        .from(".copy > *", { y: 20, opacity: 0, duration: 0.9, stagger: 0.1 }, 0.4)
-        .from(".foot", { y: 20, opacity: 0, duration: 0.8 }, 0.8);
+      tl.from(".fig img", { y: 60, opacity: 0, duration: 1.2, stagger: { each: 0.08, from: "start" } }, 1.55)
+        .from(".wm", { opacity: 0, xPercent: -6, duration: 1.6 }, 1.6)
+        .from(".copy > *", { y: 20, opacity: 0, duration: 0.9, stagger: 0.1 }, 1.8)
+        .from(".foot", { y: 20, opacity: 0, duration: 0.8 }, 2.1);
     },
     { scope: stage }
   );
@@ -113,6 +114,32 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
       );
     },
     { scope: stage, dependencies: [cur] }
+  );
+
+  // giant italic look name behind the models
+  useGSAP(
+    () => {
+      gsap.fromTo(".wm span", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 1.2, ease: "power3.out" });
+    },
+    { scope: stage, dependencies: [cur] }
+  );
+
+  // magnetic arrow buttons
+  useGSAP(
+    () => {
+      if (window.matchMedia("(pointer:coarse)").matches) return;
+      const btns = gsap.utils.toArray<HTMLElement>(".arrows button");
+      const offs = btns.map((b) => {
+        const mx = gsap.quickTo(b, "x", { duration: 0.4, ease: "power3.out" });
+        const my = gsap.quickTo(b, "y", { duration: 0.4, ease: "power3.out" });
+        const move = (e: MouseEvent) => { const r = b.getBoundingClientRect(); mx((e.clientX - r.left - r.width / 2) * 0.35); my((e.clientY - r.top - r.height / 2) * 0.35); };
+        const leave = () => { mx(0); my(0); };
+        b.addEventListener("mousemove", move); b.addEventListener("mouseleave", leave);
+        return () => { b.removeEventListener("mousemove", move); b.removeEventListener("mouseleave", leave); };
+      });
+      return () => offs.forEach((f) => f());
+    },
+    { scope: stage }
   );
 
   // subtle mouse parallax on the hero and the queue
@@ -166,7 +193,7 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
   }, [go]);
 
   const touchX = useRef<number | null>(null);
-  const look = LOOKS[cur];
+  const look = looks[cur];
   const lookNo = "LOOK " + String(cur + 1).padStart(2, "0");
 
   return (
@@ -182,13 +209,14 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
         touchX.current = null;
       }}
     >
+      <div className="wm" aria-hidden="true"><span key={cur}>{look.name}</span></div>
       <div className="copy">
-        <div className="cap">Varde · Low tide</div>
+        <div className="cap">Varde · Low tide · <b>{String(cur + 1).padStart(2, "0")}</b> / {String(N).padStart(2, "0")}</div>
         <h1>Autumn Winter<br />2026</h1>
         <p>Brushed wool, bouclé and soft suede in the colours of a winter shoreline, cut easy for long walks home.</p>
       </div>
 
-      {LOOKS.map((l, i) => (
+      {looks.map((l, i) => (
         <div
           key={l.id}
           className="fig"
@@ -228,17 +256,17 @@ export default function Lookbook({ cur, setCur }: { cur: number; setCur: (n: num
         </div>
         <div className="shop">
           <button
-            className="cap"
+            className="cap shoplook"
             onClick={() => {
               look.products.forEach((p) => add(p.id, "M"));
               setBagOpen(true);
               notify("Whole look added in size M");
             }}
           >
-            Shop the look
+            Shop the look <svg width="18" viewBox="0 0 18 10" aria-hidden="true"><path d="M0 5h16M12 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>
           </button>
           <div className="prog">
-            {LOOKS.map((l, i) => (
+            {looks.map((l, i) => (
               <button key={l.id} className={i === cur ? "on" : ""} aria-label={`Go to look ${i + 1}`} onClick={() => go(i)} />
             ))}
           </div>

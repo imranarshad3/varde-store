@@ -1,140 +1,101 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { ALL_PRODUCTS, FREE_SHIPPING, LOOKS, SIZES, money, productById } from "@/lib/data";
+import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { money } from "@/lib/types";
+import BagLines from "./BagLines";
 
 gsap.registerPlugin(useGSAP);
 
-export default function BagDrawer({ cur }: { cur: number }) {
-  const { bag, subtotal, bagOpen, setBagOpen, setQty, remove, add, notify } = useStore();
+export default function BagDrawer() {
+  const { lines, subtotal, bagOpen, setBagOpen, settings, catalog, add, notify } = useStore();
   const drawer = useRef<HTMLElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLElement>(null);
-  const rail = useRef<HTMLDivElement>(null);
-  const [dot, setDot] = useState(0);
-  const [pick, setPick] = useState<Record<number, string>>({});
+  const path = usePathname();
+
+  useEffect(() => { setBagOpen(false); }, [path, setBagOpen]);
 
   useGSAP(() => {
-    const scrim = document.querySelector(".scrim");
     if (bagOpen) {
-      gsap.to(scrim, { autoAlpha: 1, duration: 0.35 });
-      gsap.fromTo(drawer.current, { x: "100%", autoAlpha: 1 }, { x: "0%", duration: 0.6, ease: "expo.out" });
+      gsap.to(scrim.current, { autoAlpha: 1, duration: 0.35 });
+      gsap.fromTo(drawer.current, { x: "100%", autoAlpha: 1 }, { x: "0%", duration: 0.7, ease: "expo.out" });
       gsap.from(".drawer .li, .drawer .ups", { x: 30, opacity: 0, duration: 0.5, stagger: 0.06, delay: 0.15, ease: "power3.out" });
     } else {
       gsap.to(drawer.current, { x: "100%", duration: 0.45, ease: "power3.in", onComplete: () => { gsap.set(drawer.current, { autoAlpha: 0 }); } });
-      if (!document.querySelector(".modal.open")) gsap.to(scrim, { autoAlpha: 0, duration: 0.35 });
+      gsap.to(scrim.current, { autoAlpha: 0, duration: 0.35 });
     }
   }, { dependencies: [bagOpen] });
 
   useGSAP(() => {
-    gsap.to(track.current, { width: `${Math.min(100, (subtotal / FREE_SHIPPING) * 100)}%`, duration: 0.8, ease: "power3.out" });
-  }, { dependencies: [subtotal] });
+    gsap.to(track.current, { width: `${Math.min(100, (subtotal / settings.freeShipping) * 100)}%`, duration: 0.8, ease: "power3.out" });
+  }, { dependencies: [subtotal, settings.freeShipping] });
 
   useEffect(() => {
     if (!bagOpen) return;
-    const scrim = document.querySelector(".scrim") as HTMLElement | null;
-    const close = () => setBagOpen(false);
-    const k = (e: KeyboardEvent) => e.key === "Escape" && close();
-    scrim?.addEventListener("click", close);
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setBagOpen(false);
     window.addEventListener("keydown", k);
-    return () => { scrim?.removeEventListener("click", close); window.removeEventListener("keydown", k); };
+    return () => window.removeEventListener("keydown", k);
   }, [bagOpen, setBagOpen]);
 
-  const inBag = new Set(bag.map((l) => l.id));
-  const current = new Set(LOOKS[cur].products.map((p) => p.id));
-  const ups = ALL_PRODUCTS.filter(
-    (p) => !inBag.has(p.id) && !current.has(p.id) && (p.category === "knit" || p.category === "accessory" || p.category === "top")
-  ).slice(0, 5);
+  const inBag = new Set(lines.map((l) => l.id));
+  const ups = catalog.filter((p) => !inBag.has(p.id) && p.stock > 0 && ["knit", "accessory", "top"].includes(p.category)).slice(0, 5);
 
   return (
-    <aside className={`drawer${bagOpen ? " open" : ""}`} ref={drawer} aria-label="Your bag" aria-hidden={!bagOpen}>
-      <div className="dh">
-        <h2>Your bag</h2>
-        <button className="x" aria-label="Close bag" onClick={() => setBagOpen(false)}>×</button>
-        <div className="free">
-          {subtotal >= FREE_SHIPPING ? (
-            <b>You&apos;ve unlocked free delivery</b>
-          ) : (
-            <><b>{money(FREE_SHIPPING - subtotal)} CAD</b> away from free delivery</>
-          )}
+    <>
+      <div className="scrim" ref={scrim} onClick={() => setBagOpen(false)} />
+      <aside className={`drawer${bagOpen ? " open" : ""}`} ref={drawer} aria-label="Your bag" aria-hidden={!bagOpen}>
+        <div className="dh">
+          <h2>Your bag <sup>{lines.reduce((s, l) => s + l.qty, 0)}</sup></h2>
+          <button className="x" aria-label="Close bag" onClick={() => setBagOpen(false)}>×</button>
+          <div className="free">
+            {subtotal >= settings.freeShipping ? <b>Complimentary delivery unlocked</b> : <><b>{money(settings.freeShipping - subtotal)}</b> away from complimentary delivery</>}
+          </div>
+          <div className="track"><i ref={track} /></div>
         </div>
-        <div className="track"><i ref={track} /></div>
-      </div>
-
-      <div className="db">
-        <div className="th"><span>Product</span><span>Total</span></div>
-        {bag.length === 0 && (
-          <div className="empty">Your bag is empty.<br />Step through the looks and add a piece.</div>
-        )}
-        {bag.map((l) => {
-          const p = productById(l.id);
-          return (
-            <div className="li" key={l.key}>
-              <div className="ti"><Image src={p.img} alt={p.name} fill sizes="76px" /></div>
-              <div>
-                <div className="n">{p.name}</div>
-                <div className="s">{money(p.price)}<br />Size: {l.size}<br />Color: {p.colorName}</div>
-                <div className="qty">
-                  <div className="q">
-                    <button aria-label="Decrease" onClick={() => setQty(l.key, l.qty - 1)}>−</button>
-                    <span>{l.qty}</span>
-                    <button aria-label="Increase" onClick={() => setQty(l.key, l.qty + 1)}>+</button>
-                  </div>
-                  <button className="rm" aria-label={`Remove ${p.name}`} onClick={() => remove(l.key)}>
-                    <svg width="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.7 9.5h5.6l.7-9.5" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>
-                  </button>
-                </div>
-              </div>
-              <div className="t">{money(p.price * l.qty)}</div>
+        <div className="db">
+          {lines.length === 0 ? (
+            <div className="empty">
+              <p>Your bag is empty.</p>
+              <Link href="/shop" className="btn-line">Discover the collection</Link>
             </div>
-          );
-        })}
-
-        {ups.length > 0 && (
-          <div className="ups">
-            <h4>You&apos;ll love with it</h4>
-            <div
-              className="rail"
-              ref={rail}
-              onScroll={(e) => {
-                const r = e.currentTarget;
-                const w = (r.firstElementChild as HTMLElement | null)?.offsetWidth ?? 1;
-                setDot(Math.round(r.scrollLeft / (w + 10)));
-              }}
-            >
-              {ups.map((p) => (
-                <div className="uc" key={p.id}>
-                  <div className="ti"><Image src={p.img} alt={p.name} fill sizes="64px" /></div>
-                  <div>
-                    <div className="n">{p.name}</div>
-                    <select
-                      aria-label={`Size for ${p.name}`}
-                      value={pick[p.id] ?? "S"}
-                      onChange={(e) => setPick({ ...pick, [p.id]: e.target.value })}
-                    >
-                      {SIZES.map((s) => <option key={s} value={s}>{s} / {p.colorName}</option>)}
-                    </select>
-                    <div className="row">
-                      <span>{money(p.price)}</span>
-                      <button onClick={() => { add(p.id, pick[p.id] ?? "S"); notify("Added to bag"); }}>Add to cart</button>
+          ) : <BagLines />}
+          {ups.length > 0 && (
+            <div className="ups">
+              <h4>Complete the look</h4>
+              <div className="rail">
+                {ups.map((p) => (
+                  <div className="uc" key={p.id}>
+                    <Link href={`/product/${p.slug}`} className="ti"><Image src={p.img} alt={p.name} fill sizes="64px" /></Link>
+                    <div>
+                      <div className="n">{p.name}</div>
+                      <div className="row">
+                        <span>{money(p.price)}</span>
+                        <button onClick={() => { add(p.id, "M"); notify(`${p.name} · M added`); }}>Add · M</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-            <div className="dots">{ups.map((p, i) => <i key={p.id} className={i === dot ? "on" : ""} />)}</div>
+          )}
+        </div>
+        {lines.length > 0 && (
+          <div className="df">
+            <div className="sub"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+            <small>Taxes and delivery calculated at checkout</small>
+            <div className="df-btns">
+              <Link href="/cart" className="btn ghost">View bag</Link>
+              <Link href="/checkout" className="btn">Checkout</Link>
+            </div>
           </div>
         )}
-      </div>
-
-      <div className="df">
-        <div className="sub"><span>Subtotal</span><span>{money(subtotal)}</span></div>
-        <small>Taxes and shipping calculated at checkout</small>
-        <button className="btn" onClick={() => notify("This is a demo store")}>Checkout</button>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
